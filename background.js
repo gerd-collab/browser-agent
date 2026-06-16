@@ -97,24 +97,41 @@ class AgentController {
       console.log('[MiniMax Agent] Content script not responsive, attempting injection:', e.message);
     }
 
-    // Try to inject
+    // Try to inject bundled content script (no ES module issues)
     try {
-      await chrome.scripting.executeScript({
-        target: { tabId },
-        files: ['content.js'],
-      });
-      console.log('[MiniMax Agent] Content script injected via scripting API');
+      console.log('[MiniMax Agent] Injecting bundled content script');
+      await chrome.scripting.executeScript({ target: { tabId }, files: ['content-bundled.js'] });
+      console.log('[MiniMax Agent] Bundled content script injected');
 
-      // Wait a bit and verify
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, 800));
       const response = await this.sendToContentScriptWithTabId(tabId, { type: 'PING' });
-      if (!response?.pong) {
-        throw new Error('Content script injected but not responding');
+      if (response?.pong) {
+        console.log('[MiniMax Agent] Content script verified and responding');
+        return;
+      }
+      console.log('[MiniMax Agent] Bundled script injected but not responding');
+    } catch (e) {
+      console.warn('[MiniMax Agent] Bundled injection failed:', e.message);
+    }
+
+    // Fallback: try original content.js (works if manifest-declared script loads on refresh)
+    try {
+      console.log('[MiniMax Agent] Trying original content.js');
+      await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
+      console.log('[MiniMax Agent] Original content.js injected');
+
+      await new Promise(r => setTimeout(r, 800));
+      const response = await this.sendToContentScriptWithTabId(tabId, { type: 'PING' });
+      if (response?.pong) {
+        console.log('[MiniMax Agent] Original content script verified');
+        return;
       }
     } catch (e) {
-      console.error('[MiniMax Agent] Content script injection failed:', e.message);
-      throw new Error(`Cannot load content script on this page. ${e.message}. Try refreshing the page.`);
+      console.warn('[MiniMax Agent] Original injection failed:', e.message);
     }
+
+    // Last resort: check if content script is declared in manifest and just needs page reload
+    throw new Error('Content script injection failed. The page may block extension scripts (CSP). Try: 1) Refresh page, 2) Try a different site (e.g., example.com), 3) Check DevTools Console on the page for CSP errors.');
   }
 
   async sendToContentScriptWithTabId(tabId, message) {
