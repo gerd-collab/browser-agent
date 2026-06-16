@@ -6,6 +6,9 @@ const executor = new ActionExecutor();
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   switch (message.type) {
+    case 'PING':
+      sendResponse({ pong: true });
+      return true;
     case 'ANNOTATE_DOM':
       handleAnnotate(message.image)
         .then(sendResponse)

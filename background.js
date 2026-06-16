@@ -84,16 +84,34 @@ class AgentController {
   }
 
   async ensureContentScript(tabId) {
+    // First check if content script is already responsive
+    try {
+      const response = await this.sendToContentScript({ type: 'PING' });
+      if (response?.pong) {
+        console.log('[MiniMax Agent] Content script already loaded');
+        return;
+      }
+    } catch (e) {
+      console.log('[MiniMax Agent] Content script not responsive, attempting injection:', e.message);
+    }
+
+    // Try to inject
     try {
       await chrome.scripting.executeScript({
         target: { tabId },
         files: ['content.js'],
       });
-      console.log('[MiniMax Agent] Content script injected');
-    } catch (e) {
-      if (!e.message.includes('Cannot access')) {
-        console.warn('[MiniMax Agent] Content script injection:', e.message);
+      console.log('[MiniMax Agent] Content script injected via scripting API');
+
+      // Wait a bit and verify
+      await new Promise(r => setTimeout(r, 500));
+      const response = await this.sendToContentScript({ type: 'PING' });
+      if (!response?.pong) {
+        throw new Error('Content script injected but not responding');
       }
+    } catch (e) {
+      console.error('[MiniMax Agent] Content script injection failed:', e.message);
+      throw new Error(`Cannot load content script on this page. ${e.message}. Try refreshing the page.`);
     }
   }
 
