@@ -10,7 +10,7 @@ Chrome Extension (Manifest V3) that uses MiniMax M3 Vision API to automate brows
 │                     Chrome Extension                         │
 ├─────────────────────────────────────────────────────────────┤
 │  Background Service Worker (background.js)                  │
-│  ├── MiniMaxAPI wrapper                                     │
+│  ├── MiniMaxAPI wrapper (Anthropic-compatible format)       │
 │  ├── Agent loop controller                                  │
 │  ├── State management                                       │
 │  └── chrome.runtime messaging                               │
@@ -50,11 +50,25 @@ minimax-browser-agent/
 
 1. **Capture** - `chrome.tabs.captureVisibleTab()` → base64 PNG
 2. **Annotate** - Content script finds interactive elements, draws numbered badges on screenshot
-3. **Send to M3** - Image + goal + history + element map → MiniMax M3 API
+3. **Send to M3** - Image + goal + history + element map → MiniMax M3 API (Anthropic-compatible)
 4. **Parse Action** - M3 returns structured JSON: `{type, params, reasoning}`
 5. **Execute** - Content script performs action via DOM events
 6. **Wait** - 1.5s for DOM updates
 7. **Repeat** until DONE or maxSteps (20)
+
+## Token Plan API - CRITICAL
+
+**Token Plan keys (`sk-cp-...`) use the Anthropic-compatible endpoint:**
+
+| Setting | Value |
+|---------|-------|
+| **Endpoint** | `https://api.minimax.io/anthropic/v1/messages` |
+| **Auth Header** | `x-api-key: <your_token_plan_key>` |
+| **Required Header** | `anthropic-version: 2023-06-01` |
+| **Model** | `MiniMax-M3` |
+| **Format** | Anthropic/Claude Messages API |
+
+**NOT the standard MiniMax endpoint** (`https://api.minimax.io/v1/text/chatcompletion_v2`) - that's for pay-as-you-go keys.
 
 ## Key Technical Decisions
 
@@ -74,13 +88,6 @@ minimax-browser-agent/
 - Extension **not published to Web Store** - load as unpacked developer extension
 - M3 sees everything user sees - treat as sensitive
 
-## MiniMax API Integration
-
-**Endpoint**: `https://api.minimax.io/v1/text/chatcompletion_v2`
-**Model**: `MiniMax-M3` (or exact model name from dashboard)
-**Auth**: `Bearer <api_key>`
-**Format**: OpenAI-compatible chat completion with `response_format: {type: "json_object"}`
-
 ## Action Types
 
 | Type | Params | Description |
@@ -95,7 +102,7 @@ minimax-browser-agent/
 
 ```bash
 # 1. Clone/create project folder
-# 2. Add your MiniMax API key in side panel
+# 2. Add your MiniMax Token Plan key in side panel
 # 3. Chrome → Extensions → Developer mode → Load unpacked → select folder
 # 4. Open side panel (toolbar icon or Ctrl+Shift+Y)
 # 5. Enter goal → Start Agent
@@ -125,12 +132,21 @@ minimax-browser-agent/
 |-------|----------|
 | "API Key not set" | Enter key in side panel, click Save |
 | "Element not found" | Page changed, agent will retry next loop |
-| M3 returns invalid JSON | Check model name, API key validity |
+| 401 Unauthorized | Verify Token Plan key is active, has credits/seat |
+| 404 Model not found | Model must be `MiniMax-M3` (exact case) |
+| M3 returns invalid JSON | Check temperature (0.1), ensure system prompt is clear |
 | Extension not loading | Check Manifest V3, reload unpacked |
 | Side panel empty | Refresh extension, reopen panel |
 
-## Cost Estimation
+## Cost Estimation (Token Plan)
 
-- M3 Vision: ~$0.50-2.00 per 1M tokens (check current pricing)
-- Typical task: 5-15 steps × ~2K tokens = ~$0.01-0.05 per task
-- Very cost-effective vs GPT-4o/Claude
+- **Token Plan**: $20/month = ~12.5B tokens/month
+- **M3 Vision**: ~1k-5k tokens per image (depending on detail)
+- Typical task: 5-15 steps × ~3K tokens = ~15-45K tokens per task
+- **~277-833 tasks per $20/month** - extremely cost-effective
+
+## References
+
+- [MiniMax Token Plan Quickstart](https://platform.minimax.io/docs/token-plan/quickstart)
+- [Anthropic API Reference](https://platform.minimax.io/docs/api-reference/text-anthropic-api)
+- [MiniMax M3 Model Page](https://www.minimax.io/models/text/m3)
