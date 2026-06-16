@@ -1,16 +1,18 @@
 import { MinimaxAPI } from './utils/minimax-api.js';
 
 const API_KEY_STORAGE = 'minimax_api_key';
-const AGENT_STATE_STORAGE = 'agent_state';
+const CONTENT_SCRIPT_TIMEOUT = 10000;
 
 class AgentController {
   constructor() {
     this.api = null;
     this.currentTabId = null;
+    this.currentTab = null;
     this.isRunning = false;
     this.stepHistory = [];
     this.maxSteps = 20;
     this.goal = '';
+    this.abortController = null;
   }
 
   async init() {
@@ -30,10 +32,12 @@ class AgentController {
         return true;
       case 'START_AGENT':
         console.log('[MiniMax Agent] Starting agent for tab', message.tabId, 'goal:', message.goal);
-        this.startAgent(message.tabId, message.goal).then(() => sendResponse({ success: true })).catch(err => {
-          console.error('[MiniMax Agent] Start failed:', err.message);
-          sendResponse({ success: false, error: err.message });
-        });
+        this.startAgent(message.tabId, message.goal)
+          .then(() => sendResponse({ success: true }))
+          .catch(err => {
+            console.error('[MiniMax Agent] Start failed:', err.message);
+            sendResponse({ success: false, error: err.message });
+          });
         return true;
       case 'STOP_AGENT':
         this.stopAgent();
@@ -63,30 +67,58 @@ class AgentController {
 
     const tab = await chrome.tabs.get(tabId);
     if (!tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('edge://') || tab.url.startsWith('about:') || tab.url.startsWith('chrome-extension://')) {
-      throw new Error('Cannot run on this page. Open a regular website (http/https) and try again.');
+      throw new Error(`Cannot run on "${tab.url || 'empty URL'}". Open a regular website (http/https) and try again.`);
     }
 
+    await this.ensureContentScript(tabId);
+
     this.currentTabId = tabId;
+    this.currentTab = tab;
     this.isRunning = true;
     this.stepHistory = [];
     this.goal = goal;
+    this.abortController = new AbortController();
 
     this.broadcastState();
     await this.runLoop();
   }
 
+  async ensureContentScript(tabId) {
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ['content.js'],
+      });
+      console.log('[MiniMax Agent] Content script injected');
+    } catch (e) {
+      if (!e.message.includes('Cannot access')) {
+        console.warn('[MiniMax Agent] Content script injection:', e.message);
+      }
+    }
+  }
+
   stopAgent() {
     this.isRunning = false;
+    if (this.abortController) this.abortController.abort();
     this.currentTabId = null;
+    this.currentTab = null;
+    this.abortController = null;
     this.broadcastState();
   }
 
   async runLoop() {
     while (this.isRunning && this.stepHistory.length < this.maxSteps) {
+      if (this.abortController?.signal.aborted) break;
+
       try {
         const screenshot = await this.captureTab();
+        if (this.abortController?.signal.aborted) break;
+
         const { annotatedImage, elementMap } = await this.annotateDom(screenshot);
+        if (this.abortController?.signal.aborted) break;
+
         const action = await this.api.getNextAction(annotatedImage, this.goal, this.stepHistory, elementMap);
+        if (this.abortController?.signal.aborted) break;
 
         if (action.type === 'DONE') {
           this.stepHistory.push({ action, result: 'Goal achieved', timestamp: Date.now() });
@@ -97,11 +129,12 @@ class AgentController {
         this.stepHistory.push({ action, result, timestamp: Date.now() });
         this.broadcastState();
 
-        await this.sleep(1500);
+        await this.sleep(1500, this.abortController?.signal);
       } catch (error) {
+        if (this.abortController?.signal.aborted) break;
         console.error('[MiniMax Agent] Loop error:', error);
         this.stepHistory.push({ error: error.message, timestamp: Date.now() });
-        await this.sleep(2000);
+        await this.sleep(2000, this.abortController?.signal);
       }
     }
 
@@ -110,26 +143,33 @@ class AgentController {
   }
 
   async captureTab() {
-    const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+    console.log('[MiniMax Agent] Capturing tab', this.currentTabId, 'window', this.currentTab?.windowId, 'url', this.currentTab?.url);
+    const dataUrl = await chrome.tabs.captureVisibleTab(this.currentTab?.windowId, { format: 'png' });
     return dataUrl.split(',')[1];
   }
 
   async sendToContentScript(message) {
     if (!this.currentTabId) throw new Error('No tab ID');
-    return new Promise((resolve, reject) => {
-      chrome.tabs.sendMessage(this.currentTabId, message, (response) => {
-        if (chrome.runtime.lastError) {
-          const msg = chrome.runtime.lastError.message;
-          if (msg.includes('Receiving end does not exist') || msg.includes('Could not establish connection')) {
-            reject(new Error('Content script not loaded. Refresh the page or open a regular website (not chrome://, new tab, etc.)'));
+
+    return Promise.race([
+      new Promise((resolve, reject) => {
+        chrome.tabs.sendMessage(this.currentTabId, message, (response) => {
+          if (chrome.runtime.lastError) {
+            const msg = chrome.runtime.lastError.message;
+            if (msg.includes('Receiving end does not exist') || msg.includes('Could not establish connection')) {
+              reject(new Error('Content script not loaded. Refresh the page or open a regular website (not chrome://, new tab, etc.)'));
+            } else {
+              reject(new Error(msg));
+            }
           } else {
-            reject(new Error(msg));
+            resolve(response);
           }
-        } else {
-          resolve(response);
-        }
-      });
-    });
+        });
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Content script timeout (10s)')), CONTENT_SCRIPT_TIMEOUT)
+      )
+    ]);
   }
 
   async annotateDom(base64Image) {
@@ -148,8 +188,16 @@ class AgentController {
     return { isRunning: this.isRunning, history: this.stepHistory, goal: this.goal, hasApiKey: !!this.api };
   }
 
-  sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+  sleep(ms, signal) {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(resolve, ms);
+      if (signal) {
+        signal.addEventListener('abort', () => {
+          clearTimeout(timeout);
+          reject(new DOMException('Aborted', 'AbortError'));
+        }, { once: true });
+      }
+    });
   }
 }
 

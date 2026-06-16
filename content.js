@@ -7,10 +7,20 @@ const executor = new ActionExecutor();
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   switch (message.type) {
     case 'ANNOTATE_DOM':
-      handleAnnotate(message.image).then(sendResponse).catch(err => sendResponse({ error: err.message }));
+      handleAnnotate(message.image)
+        .then(sendResponse)
+        .catch(err => {
+          console.error('[MiniMax Agent] Annotate error:', err);
+          sendResponse({ error: err.message });
+        });
       return true;
     case 'EXECUTE_ACTION':
-      handleExecute(message.action).then(sendResponse).catch(err => sendResponse({ success: false, error: err.message }));
+      handleExecute(message.action)
+        .then(sendResponse)
+        .catch(err => {
+          console.error('[MiniMax Agent] Execute error:', err);
+          sendResponse({ success: false, error: err.message });
+        });
       return true;
     case 'REMOVE_ANNOTATIONS':
       annotator.remove();
@@ -20,23 +30,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 async function handleAnnotate(base64Image) {
-  const elements = annotator.findInteractiveElements();
-  const annotatedImage = await annotator.annotateScreenshot(base64Image, elements);
+  try {
+    const elements = annotator.findInteractiveElements();
+    console.log('[MiniMax Agent] Found', elements.length, 'interactive elements');
 
-  const elementMap = {};
-  elements.forEach((el, idx) => {
-    elementMap[idx + 1] = {
-      tag: el.tagName.toLowerCase(),
-      type: el.type || '',
-      text: el.innerText?.slice(0, 100) || '',
-      placeholder: el.placeholder || '',
-      href: el.href || '',
-      isVisible: annotator.isVisible(el),
-      rect: el.getBoundingClientRect()
-    };
-  });
+    let annotatedImage;
+    try {
+      annotatedImage = await annotator.annotateScreenshot(base64Image, elements);
+    } catch (err) {
+      console.warn('[MiniMax Agent] Screenshot annotation failed, using original:', err.message);
+      annotatedImage = base64Image;
+    }
 
-  return { annotatedImage, elementMap };
+    const elementMap = {};
+    elements.forEach((el, idx) => {
+      elementMap[idx + 1] = {
+        tag: el.tagName.toLowerCase(),
+        type: el.type || '',
+        text: el.innerText?.slice(0, 100) || '',
+        placeholder: el.placeholder || '',
+        href: el.href || '',
+        isVisible: annotator.isVisible(el),
+        rect: el.getBoundingClientRect?.() ?? { top: 0, left: 0, width: 0, height: 0 }
+      };
+    });
+
+    return { annotatedImage, elementMap };
+  } catch (error) {
+    console.error('[MiniMax Agent] handleAnnotate failed:', error);
+    throw error;
+  }
 }
 
 async function handleExecute(action) {
@@ -44,6 +67,7 @@ async function handleExecute(action) {
     const result = await executor.execute(action);
     return { success: true, result };
   } catch (error) {
+    console.error('[MiniMax Agent] handleExecute failed:', error);
     return { success: false, error: error.message };
   }
 }

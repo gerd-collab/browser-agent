@@ -16,59 +16,78 @@ export class DOMAnnotator {
   }
 
   isVisible(el) {
-    const style = getComputedStyle(el);
-    return style.display !== 'none' &&
-           style.visibility !== 'hidden' &&
-           style.opacity !== '0' &&
-           el.offsetWidth > 0 &&
-           el.offsetHeight > 0;
+    try {
+      const style = getComputedStyle(el);
+      return style.display !== 'none' &&
+             style.visibility !== 'hidden' &&
+             style.opacity !== '0' &&
+             el.offsetWidth > 0 &&
+             el.offsetHeight > 0;
+    } catch {
+      return false;
+    }
   }
 
   isInViewport(el) {
-    const rect = el.getBoundingClientRect();
-    return rect.top < window.innerHeight &&
-           rect.bottom > 0 &&
-           rect.left < window.innerWidth &&
-           rect.right > 0;
+    try {
+      const rect = el.getBoundingClientRect();
+      return rect.top < window.innerHeight &&
+             rect.bottom > 0 &&
+             rect.left < window.innerWidth &&
+             rect.right > 0;
+    } catch {
+      return false;
+    }
   }
 
   async annotateScreenshot(base64Image, elements) {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    const img = new Image();
+    try {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas context unavailable');
 
-    await new Promise(resolve => {
-      img.onload = resolve;
-      img.src = `data:image/png;base64,${base64Image}`;
-    });
+      const img = new Image();
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = () => reject(new Error('Failed to load screenshot image'));
+        img.src = `data:image/png;base64,${base64Image}`;
+      });
 
-    canvas.width = img.width;
-    canvas.height = img.height;
-    ctx.drawImage(img, 0, 0);
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
 
-    const scaleX = canvas.width / window.innerWidth;
-    const scaleY = canvas.height / window.innerHeight;
+      const scaleX = canvas.width / window.innerWidth;
+      const scaleY = canvas.height / window.innerHeight;
 
-    elements.forEach((el, idx) => {
-      const id = idx + 1;
-      const rect = el.getBoundingClientRect();
-      const x = (rect.left + rect.width / 2) * scaleX;
-      const y = (rect.top + rect.height / 2) * scaleY;
-      const radius = Math.max(16, Math.min(rect.width, rect.height) * 0.5 * scaleX);
+      elements.forEach((el, idx) => {
+        try {
+          const id = idx + 1;
+          const rect = el.getBoundingClientRect();
+          const x = (rect.left + rect.width / 2) * scaleX;
+          const y = (rect.top + rect.height / 2) * scaleY;
+          const radius = Math.max(16, Math.min(rect.width, rect.height) * 0.5 * scaleX);
 
-      ctx.beginPath();
-      ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255, 0, 0, 0.9)';
-      ctx.fill();
+          ctx.beginPath();
+          ctx.arc(x, y, radius, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(255, 0, 0, 0.9)';
+          ctx.fill();
 
-      ctx.font = `bold ${radius}px Arial`;
-      ctx.fillStyle = 'white';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(id.toString(), x, y + radius * 0.1);
-    });
+          ctx.font = `bold ${radius}px Arial`;
+          ctx.fillStyle = 'white';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(id.toString(), x, y + radius * 0.1);
+        } catch (e) {
+          console.warn('[MiniMax Agent] Failed to annotate element', idx, e.message);
+        }
+      });
 
-    return canvas.toDataURL('image/png').split(',')[1];
+      return canvas.toDataURL('image/png').split(',')[1];
+    } catch (error) {
+      console.error('[MiniMax Agent] annotateScreenshot failed:', error);
+      throw error;
+    }
   }
 
   remove() {
