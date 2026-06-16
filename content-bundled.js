@@ -112,7 +112,7 @@ class ActionExecutor {
     el.focus(); if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') { el.value = text; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); } else { el.textContent = text; el.dispatchEvent(new Event('input', { bubbles: true })); }
     return { typed: true, text };
   }
-  scroll(dir, amt = 500) { const d = dir === 'down' ? amt : -amt; window.scrollBy({ top: d, behavior: 'smooth' }); return { scrolled: dir, amount: d }; }
+  scroll(dir, amt = 500) { try { this.ensureCursor().style.transform = `translate(${innerWidth / 2}px, ${innerHeight / 2}px)`; } catch {} const d = dir === 'down' ? amt : -amt; window.scrollBy({ top: d, behavior: 'smooth' }); return { scrolled: dir, amount: d }; }
   wait(ms) { return new Promise(r => setTimeout(r, ms)); }
 }
 

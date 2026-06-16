@@ -159,6 +159,7 @@ export class ActionExecutor {
 
   scroll(direction, amount = 500) {
     try {
+      try { this.ensureCursor().style.transform = `translate(${window.innerWidth / 2}px, ${window.innerHeight / 2}px)`; } catch {}
       const delta = direction === 'down' ? amount : -amount;
       window.scrollBy({ top: delta, behavior: 'smooth' });
       return { scrolled: direction, amount: delta };

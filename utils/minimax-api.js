@@ -155,8 +155,21 @@ export class MinimaxAPI {
     return `[Summary of earlier ${olderCount} steps: ${summary}]\n${recentStr}`;
   }
 
+  trailingScrolls(history) {
+    let n = 0;
+    for (let i = history.length - 1; i >= 0; i--) {
+      if (history[i].action?.type === 'SCROLL') n++; else break;
+    }
+    return n;
+  }
+
   buildSystemPrompt(goal, history, elementMap, context = {}) {
     const historyStr = this.buildHistory(history);
+
+    const scrolls = this.trailingScrolls(history);
+    const loopWarning = scrolls >= 2
+      ? `\n\n⚠️ YOU HAVE SCROLLED ${scrolls} TIMES IN A ROW. Stop scrolling. This step you MUST CLICK a listed element or TYPE into an input — do not output SCROLL again.`
+      : '';
 
     const elementMapStr = Object.entries(elementMap)
       .map(([id, el]) => `#${id}: <${el.tag}${el.type ? ` type="${el.type}"` : ''}> ${el.text || el.placeholder || el.href || ''}`)
@@ -180,18 +193,20 @@ INTERACTIVE ELEMENTS (use these IDs in CLICK and TYPE actions):
 ${elementMapStr}
 
 EXECUTION HISTORY:
-${historyStr}
+${historyStr}${loopWarning}
 
 HOW TO WORK (you are an active agent, not a page describer):
-- Strongly prefer taking an action (CLICK, TYPE, SCROLL, NAVIGATE) over ending. Do NOT
-  answer from a single screenshot. Never use DONE on the first step unless the GOAL is a
-  pure question that the current screenshot already fully answers.
-- If the GOAL is to test / try / check / explore / QA a website: actively exercise it.
-  Scroll through the whole page, click the main buttons, links and menu items, open and
-  (where safe) submit forms, follow key navigation — and observe what happens after each
-  action. Only DONE once you have genuinely interacted with the page's main features, and
-  then report concretely what worked and what broke (errors, dead links, broken layout,
-  things that did nothing).
+- Your PRIMARY actions are CLICK and TYPE. SCROLL is only a way to reveal elements you then
+  click — it is never progress on its own. Do NOT answer from a single screenshot, and never
+  use DONE on the first step unless the GOAL is a pure question already fully answered.
+- There are interactive elements listed above with IDs. On almost every step you should
+  CLICK one of them or TYPE into one. Only SCROLL if the element you need is clearly not in
+  the current list. Never scroll twice in a row — if you just scrolled, now CLICK or TYPE.
+- If the GOAL is to test / try / check / explore / QA a website: actively exercise it —
+  click the main buttons, links and menu items, type into and submit forms (use plausible
+  test data like name "Test" / email "test@example.com"), follow navigation — and observe
+  what happens after each action. Only DONE once you have genuinely clicked/typed through the
+  page's main features, then report concretely what worked and what broke.
 - Describing what is on screen is NOT testing. Interact first, conclude last.
 
 SECURITY (critical — never violate):
