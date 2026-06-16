@@ -48,7 +48,6 @@ class AgentController {
 
   async setApiKey(key) {
     this.api = new MinimaxAPI(key);
-    API(key);
     await chrome.storage.local.set({ [API_KEY_STORAGE]: key });
   }
 
@@ -56,6 +55,11 @@ class AgentController {
     if (!this.api) throw new Error('API Key not set. Please configure in side panel.');
     if (this.isRunning) throw new Error('Agent already running');
     if (!tabId) throw new Error('No tab ID provided');
+
+    const tab = await chrome.tabs.get(tabId);
+    if (!tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('edge://') || tab.url.startsWith('about:') || tab.url.startsWith('chrome-extension://')) {
+      throw new Error('Cannot run on this page. Open a regular website (http/https) and try again.');
+    }
 
     this.currentTabId = tabId;
     this.isRunning = true;
@@ -105,12 +109,17 @@ class AgentController {
     return dataUrl.split(',')[1];
   }
 
-  async annotateDom(base64Image) {
+  async sendToContentScript(message) {
+    if (!this.currentTabId) throw new Error('No tab ID');
     return new Promise((resolve, reject) => {
-      if (!this.currentTabId) return reject(new Error('No tab ID'));
-      chrome.tabs.sendMessage(this.currentTabId, { type: 'ANNOTATE_DOM', image: base64Image }, (response) => {
+      chrome.tabs.sendMessage(this.currentTabId, message, (response) => {
         if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
+          const msg = chrome.runtime.lastError.message;
+          if (msg.includes('Receiving end does not exist') || msg.includes('Could not establish connection')) {
+            reject(new Error('Content script not loaded. Refresh the page or open a regular website (not chrome://, new tab, etc.)'));
+          } else {
+            reject(new Error(msg));
+          }
         } else {
           resolve(response);
         }
@@ -118,17 +127,12 @@ class AgentController {
     });
   }
 
+  async annotateDom(base64Image) {
+    return this.sendToContentScript({ type: 'ANNOTATE_DOM', image: base64Image });
+  }
+
   async executeAction(action) {
-    return new Promise((resolve, reject) => {
-      if (!this.currentTabId) return reject(new Error('No tab ID'));
-      chrome.tabs.sendMessage(this.currentTabId, { type: 'EXECUTE_ACTION', action }, (response) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-        } else {
-          resolve(response);
-        }
-      });
-    });
+    return this.sendToContentScript({ type: 'EXECUTE_ACTION', action });
   }
 
   broadcastState() {
