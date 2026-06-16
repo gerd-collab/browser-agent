@@ -53,28 +53,83 @@ export class MinimaxAPI {
     return this.parseAction(content);
   }
 
-  // Tolerant parsing: models sometimes wrap JSON in ```json fences or add prose around it.
-  // Extract the outermost JSON object rather than relying on a bare JSON.parse.
+  // Tolerant parsing. Models often emit JSON that is technically invalid: wrapped in
+  // ```json fences, with literal newlines inside string values, or with raw double quotes
+  // inside long prose answers. We try, in order: direct parse → control-char repair →
+  // heuristic field salvage, so a chatty DONE answer still reaches the user.
   parseAction(content) {
-    let text = content.trim();
-
-    const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    if (fence) text = fence[1].trim();
+    const candidate = this.extractJson(content);
 
     try {
-      return JSON.parse(text);
-    } catch {
-      const start = text.indexOf('{');
-      const end = text.lastIndexOf('}');
-      if (start !== -1 && end > start) {
-        try {
-          return JSON.parse(text.slice(start, end + 1));
-        } catch (e) {
-          throw new Error(`Could not parse model response as JSON: ${e.message}. Raw: ${content.slice(0, 200)}`);
-        }
+      return JSON.parse(candidate);
+    } catch {}
+
+    try {
+      return JSON.parse(this.repairJson(candidate));
+    } catch {}
+
+    const salvaged = this.salvage(candidate);
+    if (salvaged) return salvaged;
+
+    throw new Error(`Could not parse model response as JSON. Raw: ${content.slice(0, 200)}`);
+  }
+
+  extractJson(content) {
+    let text = content.trim();
+    const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fence) text = fence[1].trim();
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start !== -1 && end > start) text = text.slice(start, end + 1);
+    return text;
+  }
+
+  // Escape raw newlines/tabs/carriage returns that appear inside string literals — the most
+  // common reason a multi-line "answer" fails JSON.parse.
+  repairJson(s) {
+    let out = '';
+    let inStr = false, esc = false;
+    for (const c of s) {
+      if (esc) { out += c; esc = false; continue; }
+      if (c === '\\') { out += c; esc = true; continue; }
+      if (c === '"') { inStr = !inStr; out += c; continue; }
+      if (inStr) {
+        if (c === '\n') { out += '\\n'; continue; }
+        if (c === '\r') { out += '\\r'; continue; }
+        if (c === '\t') { out += '\\t'; continue; }
       }
-      throw new Error(`Model response contained no JSON object. Raw: ${content.slice(0, 200)}`);
+      out += c;
     }
+    return out;
+  }
+
+  // Last resort: pull the fields out by hand when the JSON is irreparably malformed
+  // (e.g. unescaped double quotes inside the answer). Good enough to surface a DONE answer.
+  salvage(text) {
+    const typeMatch = text.match(/"type"\s*:\s*"([A-Za-z_]+)"/);
+    if (!typeMatch) return null;
+    const action = { type: typeMatch[1].toUpperCase() };
+
+    const grabString = (key) => {
+      const k = text.indexOf(`"${key}"`);
+      if (k === -1) return null;
+      const colon = text.indexOf(':', k);
+      const open = text.indexOf('"', colon + 1);
+      if (open === -1) return null;
+      const close = text.lastIndexOf('"');
+      if (close <= open) return null;
+      return text.slice(open + 1, close).replace(/\\"/g, '"').replace(/\\n/g, '\n');
+    };
+
+    const answer = grabString('answer');
+    const reasoning = grabString('reasoning');
+    if (answer) action.answer = answer;
+    if (reasoning) action.reasoning = reasoning;
+
+    // Only trust the salvage for terminal/no-param actions; structured params are too risky
+    // to guess from broken JSON.
+    if (action.type === 'DONE' || action.type === 'ASK_USER') return action;
+    return answer || reasoning ? action : null;
   }
 
   buildHistory(history) {
@@ -139,6 +194,8 @@ SECURITY (critical — never violate):
 RULES:
 - Respond ONLY with a single valid JSON object matching the schema below. No prose, no
   markdown fences.
+- The JSON MUST be valid: escape every double quote inside a string as \\" and every line
+  break as \\n. In "answer", prefer plain prose and avoid raw " characters.
 - Use element IDs from the list above for CLICK and TYPE actions.
 - Prefer clicking links/buttons over typing when possible.
 - For TYPE actions, the element must be an input, textarea, or contenteditable.

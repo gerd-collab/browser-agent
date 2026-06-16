@@ -184,7 +184,8 @@ function setUIRunning(running) {
 
 function setStatus(state, text) {
   statusEl.className = `status ${state}`;
-  statusEl.textContent = text;
+  if (state === 'running') statusEl.innerHTML = `<span class="spinner"></span>${escapeHtml(text)}`;
+  else statusEl.textContent = text;
 }
 
 function renderLog(history) {
