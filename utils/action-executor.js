@@ -72,9 +72,12 @@ export class ActionExecutor {
     if (!el) throw new Error(`Element #${elementId} not found`);
 
     try {
-      ['mousedown', 'mouseup', 'click'].forEach(type => {
-        el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window }));
-      });
+      el.scrollIntoView({ block: 'center', inline: 'center' });
+      // Hover/focus handlers, then a real native click for default actions and frameworks.
+      el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+      el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+      if (typeof el.click === 'function') el.click();
+      else el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
     } catch (e) {
       throw new Error(`Click failed on element #${elementId}: ${e.message}`);
     }

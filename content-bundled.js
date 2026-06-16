@@ -56,7 +56,10 @@ class ActionExecutor {
   vp(el) { try { const r = el.getBoundingClientRect(); return r.top < innerHeight && r.bottom > 0 && r.left < innerWidth && r.right > 0; } catch { return false; } }
   click(id) {
     const el = this.getEl(id); if (!el) throw new Error('Element #' + id + ' not found');
-    ['mousedown', 'mouseup', 'click'].forEach(t => el.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
+    el.scrollIntoView({ block: 'center', inline: 'center' });
+    el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+    el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+    if (typeof el.click === 'function') el.click(); else el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
     if (el.tagName === 'A' && el.href) return { navigated: true, url: el.href };
     return { clicked: true, tag: el.tagName, text: el.innerText?.slice(0, 50) };
   }
