@@ -1,0 +1,28 @@
+# Dependencies (none currently — extension is buildless, but guard anyway)
+node_modules/
+package-lock.json
+
+# Build output
+dist/
+build/
+
+# Secrets / local config
+.env
+.env.*
+*.local
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Packaged extension
+*.zip
+*.crx
+*.pem

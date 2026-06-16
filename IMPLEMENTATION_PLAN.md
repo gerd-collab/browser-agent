@@ -117,14 +117,54 @@ minimax-browser-agent/
 | `maxElements` | 50 | Elements annotated per step |
 | `temperature` | 0.1 | M3 determinism |
 
-## Future Enhancements
+## Feature Parity Roadmap (vs. Anthropic "Claude for Chrome")
 
-- [ ] Structured Outputs enforcement (when M3 supports)
-- [ ] Multi-tab task support
-- [ ] Human-in-the-loop confirmation for sensitive actions
-- [ ] Flow recording/replay
-- [ ] Step summarization for long contexts
-- [ ] Custom element filters per site
+Goal: bring every capability of Anthropic's Claude-for-Chrome browser agent into this
+extension. Below is each Claude-for-Chrome capability, mapped to our current status.
+
+Sources: Anthropic / DataCamp / XDA / Claude Code docs (researched 2026-06).
+
+| # | Claude for Chrome capability | Our status | Notes |
+|---|------------------------------|-----------|-------|
+| 1 | Side-panel UI, natural-language goals | ✅ have | `sidepanel.*` |
+| 2 | Agentic loop: observe DOM → reason → act | ✅ have | `runLoop()` |
+| 3 | Uses existing logged-in session (no separate browser) | ✅ have | runs in real profile |
+| 4 | Click / type / fill forms | ✅ have | `ActionExecutor` |
+| 5 | Scroll | ✅ have | |
+| 6 | Final answer / summarize / extract data in chat | ✅ have | `DONE.answer` field |
+| 7 | Live, watch-in-real-time execution log | ✅ have | side-panel log |
+| 8 | Stop / abort a run | ✅ have | `AbortController` |
+| 9 | **Navigate to a URL** (open/go to address) | ❌ missing | add `NAVIGATE {url}` action |
+| 10 | **Multi-tab / tab-group operation** | ❌ missing | view+act across grouped tabs |
+| 11 | **Human-in-the-loop pause** (login, CAPTCHA, handback) | ❌ missing | pause loop, ask user, resume |
+| 12 | **Permission prompt for high-risk actions** (purchase, publish, share personal data) | ❌ missing | classify action → confirm |
+| 13 | **Per-site permissions** (allow/block per domain) | ❌ missing | settings + storage |
+| 14 | **Auto-block risky sites** (banking, adult, illegal) | ⚠️ partial | only blocks chrome:// etc. |
+| 15 | **Prompt-injection safeguards** | ❌ missing | system-prompt hardening + checks |
+| 16 | **Model selection** (Haiku/Sonnet/Opus ↔ M3 variants) | ❌ missing | dropdown + per-task model |
+| 17 | **Record-a-workflow** (teach steps, replay) | ❌ missing | record actions → save → replay |
+| 18 | **Claude Code integration** | ❌ n/a | out of scope for this fork |
+| 19 | Step summarization for long contexts | ❌ missing | summarize history past N steps |
+| 20 | Structured Outputs enforcement (when M3 supports) | ❌ missing | replace JSON.parse contract |
+
+### Suggested implementation phases
+
+**Phase 1 — core agent parity (high value, low risk)**
+- [ ] #9 `NAVIGATE {url}` action (executor + prompt schema + bundle)
+- [ ] #16 Model selection dropdown in side panel
+- [ ] #19 Step summarization to keep long runs within context
+
+**Phase 2 — safety parity (this agent is sensitive by design)**
+- [ ] #11 Human-in-the-loop pause/resume (login, CAPTCHA, ambiguity)
+- [ ] #12 Confirmation gate for high-risk actions
+- [ ] #14 Auto-block risky sites (configurable blocklist)
+- [ ] #13 Per-site allow/block permissions UI + storage
+- [ ] #15 Prompt-injection mitigations
+
+**Phase 3 — advanced**
+- [ ] #10 Multi-tab / tab-group operation
+- [ ] #17 Record-a-workflow + replay
+- [ ] #20 Structured Outputs enforcement
 
 ## Troubleshooting
 

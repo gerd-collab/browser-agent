@@ -190,7 +190,8 @@ class AgentController {
         if (this.abortController?.signal.aborted) break;
 
         if (action.type === 'DONE') {
-          this.stepHistory.push({ action, result: 'Goal achieved', timestamp: Date.now() });
+          this.stepHistory.push({ action, result: action.answer || action.reasoning || 'Goal achieved', timestamp: Date.now() });
+          this.broadcastState();
           break;
         }
 

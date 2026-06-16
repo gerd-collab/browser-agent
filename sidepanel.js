@@ -94,16 +94,32 @@ function renderLog(history) {
   }
   history.slice().reverse().forEach(h => {
     if (h.action) {
-      const badgeClass = h.action.type.toLowerCase();
-      const paramsStr = h.action.params ? ` ${JSON.stringify(h.action.params)}` : '';
-      log(`<span class="step-badge ${badgeClass}">${h.action.type}</span>${paramsStr}`, 'success');
-      if (h.action.reasoning) log(`  → ${h.action.reasoning}`, 'info');
+      const type = h.action.type;
+      const badgeClass = type.toLowerCase();
+      if (type === 'DONE') {
+        const answer = h.action.answer || h.action.reasoning || h.result || 'Goal achieved';
+        log(`<span class="step-badge done">DONE</span>`, 'success');
+        log(`<div class="answer">${escapeHtml(answer)}</div>`, 'success');
+      } else {
+        const params = h.action.params && Object.keys(h.action.params).length
+          ? ` ${escapeHtml(JSON.stringify(h.action.params))}` : '';
+        log(`<span class="step-badge ${badgeClass}">${type}</span>${params}`, 'success');
+        if (h.action.reasoning) log(`  → ${escapeHtml(h.action.reasoning)}`, 'info');
+      }
     } else if (h.error) {
-      log(`Error: ${h.error}`, 'error');
+      log(`Error: ${escapeHtml(h.error)}`, 'error');
     } else if (h.result) {
-      log(`Result: ${JSON.stringify(h.result)}`, 'info');
+      log(`Result: ${escapeHtml(JSON.stringify(h.result))}`, 'info');
     }
   });
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function log(html, type = 'info') {

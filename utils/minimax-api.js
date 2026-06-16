@@ -74,6 +74,9 @@ RULES:
 - Use WAIT for page loads or animations
 - Use DONE when the goal is achieved
 - Be concise in reasoning
+- When DONE, put the final result for the user in the "answer" field: a clear,
+  self-contained reply in the same language as the GOAL. For informational goals this is
+  the actual answer; for action goals it is a short confirmation of what was accomplished.
 
 RESPONSE SCHEMA:
 {
@@ -87,7 +90,8 @@ RESPONSE SCHEMA:
   } | {
     "ms": number
   } | {},
-  "reasoning": "brief explanation"
+  "reasoning": "brief explanation",
+  "answer": "final reply for the user — REQUIRED when type is DONE, omit otherwise"
 }`;
   }
 }
