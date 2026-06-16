@@ -1,7 +1,7 @@
 export class MinimaxAPI {
   constructor(apiKey) {
     this.apiKey = apiKey;
-    this.baseUrl = 'https://api.minimax.io/v1/text/chatcompletion_v2';
+    this.baseUrl = 'https://api.minimax.io/anthropic/v1/messages';
     this.model = 'MiniMax-M3';
   }
 
@@ -10,23 +10,24 @@ export class MinimaxAPI {
 
     const payload = {
       model: this.model,
+      max_tokens: 1500,
+      temperature: 0.1,
+      system: systemPrompt,
       messages: [{
         role: 'user',
         content: [
-          { type: 'text', text: systemPrompt },
-          { type: 'image_url', image_url: { url: `data:image/png;base64,${base64Image}` }}
+          { type: 'text', text: 'Analyze the screenshot and return the next action as JSON.' },
+          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: base64Image } }
         ]
-      }],
-      temperature: 0.1,
-      max_tokens: 1500,
-      response_format: { type: 'json_object' }
+      }]
     };
 
     const response = await fetch(this.baseUrl, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json'
+        'x-api-key': this.apiKey,
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify(payload)
     });
@@ -37,7 +38,7 @@ export class MinimaxAPI {
     }
 
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
+    const content = data.content?.[0]?.text;
 
     if (!content) throw new Error('Empty response from MiniMax M3');
 
