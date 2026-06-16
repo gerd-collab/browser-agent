@@ -15,13 +15,22 @@ class AgentController {
     this.abortController = null;
   }
 
-  async init() {
-    const { [API_KEY_STORAGE]: key } = await chrome.storage.local.get(API_KEY_STORAGE);
-    if (key) this.api = new MinimaxAPI(key);
-
+  init() {
+    // Register listeners synchronously at startup. In MV3 the service worker is killed
+    // when idle and restarted on an incoming message — if registration sat behind an
+    // await, the waking message could be dropped. The API key is loaded lazily instead
+    // (see ensureApi), so handlers never depend on async init having finished.
     chrome.runtime.onMessage.addListener(this.handleMessage.bind(this));
     chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+    this.ensureApi();
     console.log('[MiniMax Agent] Background service worker initialized');
+  }
+
+  async ensureApi() {
+    if (this.api) return this.api;
+    const { [API_KEY_STORAGE]: key } = await chrome.storage.local.get(API_KEY_STORAGE);
+    if (key) this.api = new MinimaxAPI(key);
+    return this.api;
   }
 
   handleMessage(message, sender, sendResponse) {
@@ -63,6 +72,7 @@ class AgentController {
   }
 
   async startAgent(tabId, goal) {
+    await this.ensureApi();
     if (!this.api) throw new Error('API Key not set. Please configure in side panel.');
     if (this.isRunning) throw new Error('Agent already running');
     if (!tabId) throw new Error('No tab ID provided');

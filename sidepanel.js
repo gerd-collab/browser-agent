@@ -24,6 +24,11 @@ startBtn.onclick = async () => {
   const goal = goalInput.value.trim();
   if (!goal) return alert('Enter a goal');
 
+  // Auto-save the key so users don't have to click "Save Key" separately before starting.
+  const key = apiKeyInput.value.trim();
+  if (!key) return alert('Enter API key and Save it first');
+  await new Promise(resolve => chrome.runtime.sendMessage({ type: 'SET_API_KEY', key }, resolve));
+
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab) return alert('No active tab');
 

@@ -28,11 +28,15 @@ export class ActionExecutor {
     return elements[elementId - 1];
   }
 
+  // Selector, filters and 50-element cap MUST stay identical to
+  // DOMAnnotator.findInteractiveElements() — the model addresses elements by their
+  // 1-based index in this list, so any divergence makes it act on the wrong element.
   findInteractiveElements() {
     try {
-      const selector = 'a[href], button, input:not([type="hidden"]), select, textarea, [role="button"], [role="link"], [onclick], [tabindex]:not([tabindex="-1"])';
+      const selector = 'a[href], button, input:not([type="hidden"]), select, textarea, [role="button"], [role="link"], [role="menuitem"], [role="tab"], [onclick], [tabindex]:not([tabindex="-1"])';
       return Array.from(document.querySelectorAll(selector))
-        .filter(el => this.isVisible(el) && this.isInViewport(el));
+        .filter(el => this.isVisible(el) && this.isInViewport(el))
+        .slice(0, 50);
     } catch {
       return [];
     }
@@ -41,7 +45,11 @@ export class ActionExecutor {
   isVisible(el) {
     try {
       const style = getComputedStyle(el);
-      return style.display !== 'none' && style.visibility !== 'hidden' && el.offsetWidth > 0;
+      return style.display !== 'none' &&
+             style.visibility !== 'hidden' &&
+             style.opacity !== '0' &&
+             el.offsetWidth > 0 &&
+             el.offsetHeight > 0;
     } catch {
       return false;
     }
@@ -50,7 +58,10 @@ export class ActionExecutor {
   isInViewport(el) {
     try {
       const rect = el.getBoundingClientRect();
-      return rect.top < window.innerHeight && rect.bottom > 0;
+      return rect.top < window.innerHeight &&
+             rect.bottom > 0 &&
+             rect.left < window.innerWidth &&
+             rect.right > 0;
     } catch {
       return false;
     }
