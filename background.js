@@ -36,6 +36,8 @@ class AgentController {
           .then(() => sendResponse({ success: true }))
           .catch(err => {
             console.error('[MiniMax Agent] Start failed:', err.message);
+            this.stepHistory.push({ error: err.message, timestamp: Date.now() });
+            this.broadcastState();
             sendResponse({ success: false, error: err.message });
           });
         return true;
@@ -86,7 +88,7 @@ class AgentController {
   async ensureContentScript(tabId) {
     // First check if content script is already responsive
     try {
-      const response = await this.sendToContentScript({ type: 'PING' });
+      const response = await this.sendToContentScriptWithTabId(tabId, { type: 'PING' });
       if (response?.pong) {
         console.log('[MiniMax Agent] Content script already loaded');
         return;
@@ -105,7 +107,7 @@ class AgentController {
 
       // Wait a bit and verify
       await new Promise(r => setTimeout(r, 500));
-      const response = await this.sendToContentScript({ type: 'PING' });
+      const response = await this.sendToContentScriptWithTabId(tabId, { type: 'PING' });
       if (!response?.pong) {
         throw new Error('Content script injected but not responding');
       }
@@ -113,6 +115,28 @@ class AgentController {
       console.error('[MiniMax Agent] Content script injection failed:', e.message);
       throw new Error(`Cannot load content script on this page. ${e.message}. Try refreshing the page.`);
     }
+  }
+
+  async sendToContentScriptWithTabId(tabId, message) {
+    return Promise.race([
+      new Promise((resolve, reject) => {
+        chrome.tabs.sendMessage(tabId, message, (response) => {
+          if (chrome.runtime.lastError) {
+            const msg = chrome.runtime.lastError.message;
+            if (msg.includes('Receiving end does not exist') || msg.includes('Could not establish connection')) {
+              reject(new Error('Content script not loaded. Refresh the page or open a regular website (not chrome://, new tab, etc.)'));
+            } else {
+              reject(new Error(msg));
+            }
+          } else {
+            resolve(response);
+          }
+        });
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Content script timeout (10s)')), CONTENT_SCRIPT_TIMEOUT)
+      )
+    ]);
   }
 
   stopAgent() {

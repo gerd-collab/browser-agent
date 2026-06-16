@@ -27,14 +27,26 @@ startBtn.onclick = async () => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab) return alert('No active tab');
 
-  chrome.runtime.sendMessage({ type: 'START_AGENT', tabId: tab.id, goal });
-  setUIRunning(true);
+  chrome.runtime.sendMessage({ type: 'START_AGENT', tabId: tab.id, goal }, (response) => {
+    if (response?.success) {
+      setUIRunning(true);
+    } else {
+      const err = response?.error || 'Unknown error';
+      log(`Start failed: ${err}`, 'error');
+      setStatus('error', `Start failed: ${err}`);
+    }
+  });
 };
 
 stopBtn.onclick = () => {
-  chrome.runtime.sendMessage({ type: 'STOP_AGENT' });
-  setUIRunning(false);
-  setStatus('stopped', 'Agent stopped by user');
+  chrome.runtime.sendMessage({ type: 'STOP_AGENT' }, (response) => {
+    if (response?.success) {
+      setUIRunning(false);
+      setStatus('stopped', 'Agent stopped by user');
+    } else {
+      log(`Stop failed: ${response?.error || 'Unknown error'}`, 'error');
+    }
+  });
 };
 
 chrome.runtime.onMessage.addListener((msg) => {
