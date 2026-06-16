@@ -7,14 +7,16 @@
     body { margin: 0; padding: 16px; width: 380px; min-height: 600px; background: #fafafa; }
     .section { margin-bottom: 16px; }
     label { display: block; margin-bottom: 6px; font-weight: 500; color: #333; font-size: 13px; }
-    input, textarea { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 13px; background: white; }
-    input:focus, textarea:focus { outline: none; border-color: #00BCD4; box-shadow: 0 0 0 3px rgba(0,188,212,0.15); }
+    input, textarea, select { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 13px; background: white; }
+    input:focus, textarea:focus, select:focus { outline: none; border-color: #00BCD4; box-shadow: 0 0 0 3px rgba(0,188,212,0.15); }
     button { width: 100%; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; transition: opacity 0.2s; }
     button:hover { opacity: 0.9; }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
     .primary { background: #00BCD4; color: white; }
     .danger { background: #ef4444; color: white; }
     .secondary { background: #e0e0e0; color: #333; }
+    .row { display: flex; gap: 8px; }
+    .row button { width: auto; flex: 1; }
     .log { font-family: 'Monaco', 'Menlo', monospace; font-size: 11px; background: white; padding: 12px; border-radius: 8px; max-height: 300px; overflow: auto; border: 1px solid #eee; }
     .log-entry { margin: 4px 0; padding: 6px 8px; border-radius: 4px; line-height: 1.4; }
     .log-entry.success { background: #dcfce7; color: #166534; border-left: 3px solid #22c55e; }
@@ -26,14 +28,25 @@
     .status.running { background: #dcfce7; color: #166534; }
     .status.stopped { background: #fef3c7; color: #92400e; }
     .status.error { background: #fee2e2; color: #991b1b; }
-    .step-badge { display: inline-block; background: padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; margin-right: 6px; }
+    .status.paused { background: #ede9fe; color: #5b21b6; }
+    .step-badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; margin-right: 6px; }
     .step-badge.click { background: #e0e7ff; color: #3730a3; }
     .step-badge.type { background: #dcfce7; color: #166534; }
     .step-badge.scroll { background: #fef3c7; color: #92400e; }
     .step-badge.wait { background: #f3e8ff; color: #6b21a8; }
+    .step-badge.navigate, .step-badge.open_tab, .step-badge.switch_tab { background: #cffafe; color: #155e75; }
+    .step-badge.ask_user { background: #ede9fe; color: #5b21b6; }
     .step-badge.done { background: #dcfce7; color: #166534; }
     .hint { font-size: 11px; color: #888; margin-top: 4px; }
     .hidden { display: none !important; }
+    .pending { background: #ede9fe; border: 1px solid #c4b5fd; border-radius: 8px; padding: 12px; }
+    .pending .q { font-size: 13px; color: #4c1d95; margin-bottom: 10px; line-height: 1.4; }
+    details { background: white; border: 1px solid #eee; border-radius: 8px; padding: 8px 12px; }
+    summary { cursor: pointer; font-weight: 500; font-size: 13px; color: #333; }
+    .list-item { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 6px 0; border-bottom: 1px solid #f0f0f0; }
+    .list-item span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .list-item button { width: auto; padding: 4px 8px; font-size: 11px; }
+    .mini { padding: 6px 10px; font-size: 12px; }
   </style>
 </head>
 <body>
@@ -45,14 +58,33 @@
   </div>
 
   <div class="section">
+    <label>Model</label>
+    <select id="model"></select>
+  </div>
+
+  <div class="section">
     <label>Goal / Instruction</label>
     <textarea id="goal" rows="3" placeholder="Examples:
+• 'Go to youtube.com, search TypeScript tutorial, play the first video'
 • 'Find the cheapest iPhone 15 on Amazon and add to cart'
-• 'Log into GitHub and create a new repository named test-project'
-• 'Search for "TypeScript tutorial" on YouTube and play the first video'
-• 'Go to Gmail and compose an email to john@example.com'"></textarea>
+• 'Summarize what this page is about'"></textarea>
     <button class="primary" id="startBtn">Start Agent</button>
     <button class="danger hidden" id="stopBtn">Stop Agent</button>
+  </div>
+
+  <!-- Human-in-the-loop prompt (ASK_USER / risky-action confirm) -->
+  <div class="section hidden" id="pendingSection">
+    <div class="pending">
+      <div class="q" id="pendingQuestion"></div>
+      <div id="pendingAsk" class="hidden">
+        <input type="text" id="pendingAnswer" placeholder="Your answer / then click Submit">
+        <button class="primary mini" id="submitAnswer" style="margin-top:8px;">Submit</button>
+      </div>
+      <div id="pendingConfirm" class="hidden row">
+        <button class="primary" id="approveBtn">Allow</button>
+        <button class="danger" id="denyBtn">Deny</button>
+      </div>
+    </div>
   </div>
 
   <div class="section">
@@ -62,6 +94,35 @@
   <div class="section">
     <label>Execution Log <span id="stepCount">(0 steps)</span></label>
     <div class="log" id="log"></div>
+  </div>
+
+  <div class="section">
+    <details id="workflowsDetails">
+      <summary>Workflows</summary>
+      <div style="margin-top:10px;">
+        <div class="row">
+          <input type="text" id="workflowName" placeholder="Name to save last run">
+          <button class="secondary mini" id="saveWorkflow" style="width:auto;">Save</button>
+        </div>
+        <div class="hint">Saves the actions from the last run; replay runs them without the model.</div>
+        <div id="workflowList" style="margin-top:8px;"></div>
+      </div>
+    </details>
+  </div>
+
+  <div class="section">
+    <details id="permissionsDetails">
+      <summary>Site permissions</summary>
+      <div style="margin-top:10px;">
+        <div class="row">
+          <input type="text" id="permHost" placeholder="example.com">
+          <button class="secondary mini" id="allowHost" style="width:auto;">Allow</button>
+          <button class="danger mini" id="blockHost" style="width:auto;">Block</button>
+        </div>
+        <div class="hint">Sensitive sites (banking, payments, adult) are auto-gated until you allow them.</div>
+        <div id="permList" style="margin-top:8px;"></div>
+      </div>
+    </details>
   </div>
 
   <script type="module" src="sidepanel.js"></script>

@@ -97,7 +97,23 @@ throws on `ANNOTATE_DOM`. When touching content scripts, fix the bundle to match
 - Tuning constants are inline, not configurable at runtime: `maxSteps` (20) and step delay
   (1500ms) in `background.js`; `max_tokens` (1500) and `temperature` (0.1) in
   `minimax-api.js`; element cap (50) in the annotator.
-- Action set is fixed: `CLICK {elementId}`, `TYPE {elementId, text}`,
-  `SCROLL {direction, amount}`, `WAIT {ms}`, `DONE {}`. Adding an action means updating the
-  response schema in `buildSystemPrompt()` **and** the `switch` in `ActionExecutor.execute()`
-  **and** the bundle.
+- Actions are split by where they run, via `AgentController.dispatchAction()`:
+  - **Page actions** (content script / `ActionExecutor`): `CLICK {elementId}`,
+    `TYPE {elementId, text}`, `SCROLL {direction, amount}`, `WAIT {ms}`. Adding one means
+    updating the schema in `buildSystemPrompt()`, the `switch` in `ActionExecutor.execute()`,
+    **and** the bundle.
+  - **Background actions** (handled in `background.js`, never sent to the content script):
+    `NAVIGATE {url}`, `OPEN_TAB {url}`, `SWITCH_TAB {index}`, `ASK_USER {question}`, plus the
+    terminal `DONE {answer}`. Adding one means updating the schema **and** `dispatchAction()`.
+- **Human-in-the-loop** runs through `requestUserInput()` (a promise resolved by an incoming
+  `RESUME_AGENT`/`CONFIRM_ACTION` message). It powers both `ASK_USER` pauses and the
+  risky-action confirmation gate (`classifyRisk()` + `RISKY_ACTION_PATTERNS`). `state.pending`
+  drives the side-panel prompt UI.
+- **Site permissions** live in `chrome.storage.local` under `site_permissions`
+  (`{host: 'allow'|'block'}`). `ensurePermission()` is checked on start and on every
+  navigation; hosts matching `RISKY_HOST_PATTERNS` are auto-gated until the user allows them.
+- **Workflows** (`workflows` storage key) record the executed action list from a run and
+  replay it deterministically via `runWorkflow()` **without** any model calls.
+- **Prompt-injection** defenses are prompt-level only (a SECURITY block in
+  `buildSystemPrompt()` instructing the model to treat page text as untrusted data). There is
+  no content-level sanitization.
