@@ -58,7 +58,10 @@ async function handleAnnotate(base64Image) {
       };
     });
 
-    return { annotatedImage, elementMap };
+    let thumb = null;
+    try { thumb = await annotator.thumbnail(annotatedImage); } catch (e) { console.warn('[MiniMax Agent] thumbnail failed:', e.message); }
+
+    return { annotatedImage, elementMap, thumb };
   } catch (error) {
     console.error('[MiniMax Agent] handleAnnotate failed:', error);
     throw error;

@@ -308,10 +308,20 @@ class AgentController {
         // Keep the working tab active so captureVisibleTab grabs the right page.
         await chrome.tabs.update(this.currentTabId, { active: true });
 
+        // A click in the previous step may have navigated the page, which destroys the old
+        // content script. Wait for any in-flight load and re-inject before interacting.
+        try {
+          const t = await chrome.tabs.get(this.currentTabId);
+          this.currentTab = t;
+          if (t.status && t.status !== 'complete') await this.waitForTabLoad(this.currentTabId);
+        } catch {}
+        await this.ensureContentScript(this.currentTabId);
+        if (this.aborted()) break;
+
         const screenshot = await this.captureTab();
         if (this.aborted()) break;
 
-        const { annotatedImage, elementMap } = await this.annotateDom(screenshot);
+        const { annotatedImage, elementMap, thumb } = await this.annotateDom(screenshot);
         if (this.aborted()) break;
 
         const context = await this.buildContext();
@@ -319,14 +329,14 @@ class AgentController {
         if (this.aborted()) break;
 
         if (action.type === 'DONE') {
-          this.stepHistory.push({ action, result: action.answer || action.reasoning || 'Goal achieved', timestamp: Date.now() });
+          this.stepHistory.push({ action, result: action.answer || action.reasoning || 'Goal achieved', thumb, timestamp: Date.now() });
           this.broadcastState();
           break;
         }
 
         if (action.type === 'ASK_USER') {
           const { answer } = await this.requestUserInput({ kind: 'ask', question: action.params?.question || 'The agent needs your input.', action });
-          this.stepHistory.push({ action, result: { userAnswer: answer }, timestamp: Date.now() });
+          this.stepHistory.push({ action, result: { userAnswer: answer }, thumb, timestamp: Date.now() });
           this.broadcastState();
           continue;
         }
@@ -336,14 +346,14 @@ class AgentController {
         if (risk) {
           const { approved } = await this.requestUserInput({ kind: 'confirm', question: `${risk}. Proceed with ${action.type}?`, action });
           if (!approved) {
-            this.stepHistory.push({ action, result: 'Skipped by user (risky action declined)', timestamp: Date.now() });
+            this.stepHistory.push({ action, result: 'Skipped by user (risky action declined)', thumb, timestamp: Date.now() });
             this.broadcastState();
             continue;
           }
         }
 
         const result = await this.dispatchAction(action);
-        this.stepHistory.push({ action, result, timestamp: Date.now() });
+        this.stepHistory.push({ action, result, thumb, timestamp: Date.now() });
         this.broadcastState();
 
         await this.sleep(1500, this.abortController?.signal);
@@ -444,6 +454,9 @@ class AgentController {
   }
 
   async captureTab() {
+    // Re-claim our working tab right before capturing, so a mid-run user tab-switch or click
+    // elsewhere doesn't make us screenshot the wrong page and derail the agent.
+    try { await chrome.tabs.update(this.currentTabId, { active: true }); } catch {}
     const dataUrl = await chrome.tabs.captureVisibleTab(this.currentTab?.windowId, { format: 'png' });
     return dataUrl.split(',')[1];
   }

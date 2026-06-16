@@ -195,6 +195,7 @@ function renderLog(history) {
     return;
   }
   history.slice().reverse().forEach(h => {
+    if (h.thumb) logThumb(h.thumb);
     if (h.action) {
       const type = h.action.type;
       const badgeClass = type.toLowerCase();
@@ -223,6 +224,19 @@ function log(html, type = 'info') {
   const entry = document.createElement('div');
   entry.className = `log-entry ${type}`;
   entry.innerHTML = `[${new Date().toLocaleTimeString()}] ${html}`;
+  logEl.prepend(entry);
+}
+
+// Minimized screenshot thumbnail; click to enlarge.
+function logThumb(src) {
+  const entry = document.createElement('div');
+  entry.className = 'log-entry info';
+  const img = document.createElement('img');
+  img.className = 'thumb';
+  img.src = src;
+  img.title = 'Click to enlarge';
+  img.onclick = () => img.classList.toggle('big');
+  entry.appendChild(img);
   logEl.prepend(entry);
 }
 

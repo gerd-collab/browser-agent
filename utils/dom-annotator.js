@@ -90,6 +90,23 @@ export class DOMAnnotator {
     }
   }
 
+  // Small JPEG thumbnail (full data URL) of the annotated screenshot, for the side-panel log.
+  async thumbnail(base64Png, maxW = 220) {
+    const img = new Image();
+    await new Promise((res, rej) => {
+      img.onload = res;
+      img.onerror = () => rej(new Error('thumbnail load failed'));
+      img.src = `data:image/png;base64,${base64Png}`;
+    });
+    const scale = Math.min(1, maxW / (img.width || maxW));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(img.width * scale));
+    canvas.height = Math.max(1, Math.round(img.height * scale));
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', 0.6);
+  }
+
   remove() {
   }
 }
