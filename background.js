@@ -23,12 +23,17 @@ class AgentController {
   }
 
   handleMessage(message, sender, sendResponse) {
+    console.log('[MiniMax Agent] Received message:', message.type);
     switch (message.type) {
       case 'SET_API_KEY':
         this.setApiKey(message.key).then(() => sendResponse({ success: true }));
         return true;
       case 'START_AGENT':
-        this.startAgent(message.tabId, message.goal).then(() => sendResponse({ success: true })).catch(err => sendResponse({ success: false, error: err.message }));
+        console.log('[MiniMax Agent] Starting agent for tab', message.tabId, 'goal:', message.goal);
+        this.startAgent(message.tabId, message.goal).then(() => sendResponse({ success: true })).catch(err => {
+          console.error('[MiniMax Agent] Start failed:', err.message);
+          sendResponse({ success: false, error: err.message });
+        });
         return true;
       case 'STOP_AGENT':
         this.stopAgent();
